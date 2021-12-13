@@ -2,27 +2,38 @@ import * as THREE from './libs/three.module.js';
 import { GLTFLoader } from './libs/plugins/GLTFLoader.js';
 import { TessellateModifier } from './libs/plugins/TessellateModifier.js';
 import { MetalShader, WingShader } from './shader.js';
+import { Player } from './player.js';
 
+//doms
 const container=document.getElementById("container");
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 2000 );
+const camera=new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 2000 );
 const renderer=new THREE.WebGLRenderer({antialias:true});
 let envMap=null;
 
+//objects
+let Sculpture=null;
+let player=null;
 
+//controls
 const clock = new THREE.Clock();
 let isMousePressed=false;
-let Sculpture=null;
-let level=0.0;
+const keyStates = {};
+const isCaptionShown=[false,false,false,false,false];
 
+//scatter transitions
+let baseLevel=0.0, scaleLevel=0.0;
+let scatterAnimSecs=0.0, scatterAnimDir = 0;
+
+//for mobile
 const hammertime = new Hammer(container);
 
 const isMobile = () => { try { document.createEvent("TouchEvent"); return true; } catch (e) { return false; } };
 hammertime.get('pan').set({ direction: Hammer.DIRECTION_ALL });
 
+
 function initLight()
 {
-	// LIGHTS
 	let light = new THREE.DirectionalLight( 0xffffff );
 	light.intensity=0.5;
 	light.position.set( 0.5, 0.5, 1 );
@@ -97,26 +108,20 @@ function loadObject(callback)
 	);
 }
 
-let debugObj;
-function debugSphere()
+function addPlane()
 {
-	let geometry=new THREE.SphereBufferGeometry(4,32,24);
-//	let geometry=new THREE.BoxBufferGeometry(8,8,8);
-	let material=new THREE.ShaderMaterial( {
-		uniforms: THREE.UniformsUtils.clone( WingShader.uniforms ),
-		vertexShader: WingShader.vertexShader,
-		fragmentShader: WingShader.fragmentShader
-	} );
-	material.uniforms['envMap'].value = envMap;
-	material.uniforms['fragile'].value = 0.0;
+	const gt = new THREE.TextureLoader().load( "assets/marble.png" );
+	const gg = new THREE.PlaneGeometry( 2000, 2000 );
+	const gm = new THREE.MeshPhongMaterial( { color: 0xffffff, map: gt,  } );
 
-	const tessellateModifier = new TessellateModifier( 8, 6 );
-	geometry = tessellateModifier.modify( geometry );
-	initTesselate(geometry);
+	const ground = new THREE.Mesh( gg, gm );
+	ground.rotation.x = - Math.PI / 2;
+	ground.material.map.repeat.set( 256, 256 );
+	ground.material.map.wrapS = THREE.MirroredRepeatWrapping;
+	ground.material.map.wrapT = THREE.MirroredRepeatWrapping;
+	ground.material.map.encoding = THREE.sRGBEncoding;
 
-	debugObj=new THREE.Mesh(geometry, material);
-	debugObj.position.set(0,0,0);
-	scene.add(debugObj);
+	scene.add( ground );
 }
 
 function initTesselate(geometry)
@@ -142,7 +147,6 @@ function initTesselate(geometry)
 		const muge = new THREE.Vector3((v[0].x+v[1].x+v[2].x / 3), (v[0].y+v[1].y+v[2].y / 3), (v[0].z+v[1].z+v[2].z / 3));
 
 		const d = 5 * ( 0.5 - Math.random() );
-//		const d = 5;
 
 		for ( let i = 0; i < 3; i ++ ) {
 			let point = muge.clone().addScaledVector(normal, d);
@@ -157,19 +161,59 @@ function initTesselate(geometry)
 	geometry.setAttribute( 'displacement', new THREE.BufferAttribute( displacement, 3 ) );
 }
 
+function initEventListeners()
+{
+	// EVENTS
+	container.addEventListener( 'mousedown', onMousePressed );
+	container.addEventListener( 'mousemove', onMouseMoved , false);
+	container.addEventListener('wheel', onMouseScrolled);
+	window.addEventListener( 'mouseup', onMouseReleased );
+	window.addEventListener( 'resize', onWindowResize );
+	document.addEventListener( 'keydown', ( e ) => {
+		keyStates[ e.code ] = true;
+	} );
+	document.addEventListener( 'keyup', ( e ) => {
+		keyStates[ e.code ] = false;
+	} );
+
+	// mobile events
+	if(isMobile())
+	{
+		hammertime.on('panmove', function(e){
+			player.cameraRotate(-e.velocityX/50, 0);
+			scatterDelta(e.velocityY / 100);
+		});
+		initMobileButtons();
+	}
+}
+
+function initMobileButtons()
+{
+	if(!isMobile) return;
+
+	const buttonParent=document.getElementById("buttons");
+	buttonParent.style.display="flex";
+
+	const frontButton=document.getElementById("front_button");
+	const backButton=document.getElementById("back_button");
+
+	frontButton.addEventListener('touchstart', (e)=>{keyStates['FrontTouch'] = true;});
+	frontButton.addEventListener('touchend', (e)=>{keyStates['FrontTouch'] = false;});
+	backButton.addEventListener('touchstart', (e)=>{keyStates['BackTouch'] = true;});
+	backButton.addEventListener('touchend', (e)=>{keyStates['BackTouch'] = false;});
+}
+
 function init()
 {
-	camera.position.set( 0, 1, 10 );
+	//camera & player settings
 	camera.rotation.order = 'YXZ';
-	camera.rotation.x=0.56;
-
-	const bgCol = new THREE.Color(0x444444);
-	scene.background=bgCol;
-	scene.fog = new THREE.Fog(bgCol, 900, 1200);
+	camera.rotation.x=0.26;
+	player = new Player(camera);
+	player.tp(0, 1, 45);
 
 	initLight();
 	loadEnvMap();
-//	debugSphere();
+	addPlane();
 	loadObject();
 
 	//renderer
@@ -177,49 +221,130 @@ function init()
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	container.appendChild( renderer.domElement );
 
-	// EVENTS
-	container.addEventListener( 'mousedown', onMousePressed );
-	container.addEventListener( 'mousemove', onMouseMoved , false);
-	container.addEventListener('wheel', onMouseScrolled);
-	window.addEventListener( 'mouseup', onMouseReleased );
-	window.addEventListener( 'resize', onWindowResize );
-
-	if(isMobile())
-	{
-		hammertime.on('panmove', function(e){
-			camera.rotation.y += e.velocityX/50;
-			scatter(e.velocityY / 100);
-		});
-	}
-	
+	initEventListeners();
+	showCaption(1);
 }
 
 function animate()
 {
 	requestAnimationFrame( animate );
 	const deltaTime = Math.min( 0.1, clock.getDelta() );
+	player.movement(getMoveVector(), deltaTime);
+	runScatter(deltaTime);
+	showCaptions();
 	renderer.render( scene, camera);
 }
 
+function getMoveVector()
+{
+	let res=new THREE.Vector2(0,0);
+	if(keyStates['KeyW'] === true || keyStates['ArrowUp'] === true || keyStates['FrontTouch'] === true) res.y++;
+	if(keyStates['KeyS'] === true || keyStates['ArrowDown'] === true || keyStates['BackTouch'] === true) res.y--;
+	if(keyStates['KeyA'] === true || keyStates['ArrowLeft'] === true) res.x--;
+	if(keyStates['KeyD'] === true || keyStates['ArrowRight'] === true) res.x++;
+	return res;
+}
 
 function onMouseScrolled(e)
 {
-	scatter(e.deltaY / 5000);
+	scatterDelta(e.deltaY / 5000);
 }
 
-function scatter(delta)
+function clamp(a, _min, _max)
 {
-	//change level
-	level += delta;
-	if(level <0) level =0;
-	else if(level > 1) level = 1;
+	return a>_min ? (a<_max ? a : _max) : _min;
+}
 
+//tesselate sculpture
+function scatter(amount=null)
+{
+	if(typeof amount === "number")
+	{
+		baseLevel = clamp(amount, 0, 1);
+	}
+
+	let level = clamp(baseLevel + scaleLevel * 0.4, 0, 1);
+
+	if(Sculpture == null) return;
 	for(let i=0;i<Sculpture.children.length;i++)
 	{
 		let child = Sculpture.children[i];
 		if(i == 2) child.material.emissiveIntensity = 1-level;
 		else child.material.uniforms['fragile'].value = level;
 	}
+}
+
+function scatterDelta(delta)
+{
+	if(scatterAnimDir != 0) return;
+	scaleLevel = clamp(scaleLevel + delta, 0, 1);
+	scatter();
+}
+
+function runScatter(delta)
+{
+	let pos=player.position, dir=player.velocity.clone();
+	pos.sub(dir);
+	pos.y = 0;
+
+	let dist = player.dist;
+	let prevDist = pos.length();
+
+	if(dist < 8 && prevDist > 8)
+	{
+		scatterAnimDir = 1;
+		baseLevel = clamp(baseLevel + scaleLevel * 0.4, 0, 1);
+		scaleLevel = 0;
+	}
+	else if(dist > 8 && prevDist < 8)
+	{
+		scatterAnimDir = -1;
+		baseLevel = clamp(baseLevel + scaleLevel * 0.4, 0, 1);
+		scaleLevel = 0;
+	}
+	if(scatterAnimDir != 0)
+	{
+		scatterAnimSecs += delta * scatterAnimDir * 0.1;
+		scatter(baseLevel + scatterAnimSecs * scatterAnimDir);
+		if(scatterAnimSecs > 1)
+		{
+			scatterAnimSecs = 1; scatterAnimDir = 0;
+		}
+		else if(scatterAnimSecs < 0 || ( scatterAnimDir == -1 && baseLevel < (30 - dist) / 60 ) )
+		{
+			scatterAnimSecs = 0; scatterAnimDir = 0;
+			if(baseLevel < (30 - dist) / 60) scatter((30 - dist) / 60);
+		}
+	}
+	else
+	{
+		if(dist > 30) scatter(0);
+		else if(dist > 8) scatter((30 - dist) / 60);
+	}
+}
+
+//show captions
+function showCaptions()
+{
+	let dist = player.dist;
+
+	if(isCaptionShown[0] && !isCaptionShown[1] && dist < 40) showCaption(2);
+	else if(!isCaptionShown[2] && dist < 30) showCaption(3);
+	else if(!isCaptionShown[3] && dist < 20) showCaption(4);
+	else if(!isCaptionShown[4] && dist < 10) showCaption(5);
+}
+
+function showCaption(n, callback=()=>{})
+{
+	if(isCaptionShown[n-1]) return;
+	const caption = document.getElementById( 'log'+n );
+	caption.classList.add('show');
+	caption.addEventListener('animationend', function() {
+		if (!isCaptionShown[n-1]) {
+			isCaptionShown[n-1] = true;
+			callback();
+		}
+	});
 }
 
 function onWindowResize() {
@@ -236,8 +361,7 @@ function onMouseMoved(e)
 {
 	if(isMousePressed)
 	{
-		camera.rotation.x += e.movementY/500;
-		camera.rotation.y += e.movementX/500;
+		player.cameraRotate(-e.movementX/500, -e.movementY/500);
 	}
 }
 function onMouseReleased(e) {

@@ -2,3 +2,112 @@ html,body{
 	height: 100%;
 	background-color: #ffffff;
 }
+
+#logs{
+	position: fixed;
+    bottom: 20px;
+    width: 100vw;
+    height: 100px;
+    pointer-events: none;
+}
+
+p{
+	font-family: Noto Serif KR, Georgia, serif;
+	color: #000000;
+	text-shadow: 0px 0px 4px #fff6a9;
+	margin: 5px 0px;
+	text-align: center;
+	transition: all 1s;
+}
+
+#logs div{
+	position: absolute;
+	width: 100%;
+	top: 0px;
+	opacity: 0.0;
+}
+
+.show{
+	animation:showCaption 5s ease-in-out;
+}
+
+@keyframes showCaption
+{ 
+	from {
+		opacity:0.0;
+	}
+	30%{
+		opacity:1.0;
+	}
+	70%{
+		opacity:1.0;
+	}
+	to {
+		opacity:0.0;
+	}
+}
+
+p.ko{
+	font-size: 1rem;
+}
+p.en{
+	font-size: 0.5rem;
+}
+
+p.mobile_only{
+	display: none;
+}
+p.pc_only{
+	display: block;
+}
+
+#buttons{
+	display: none;
+	position: fixed;
+    bottom: 20px;
+    right: 20px;
+    flex-direction: column;
+}
+
+#front_button, #back_button{
+	width: 80px;
+    height: 80px;
+    border-radius: 80px;
+    margin: 10px;
+    background-color: #00000080;
+    border: solid 2px #00000050;
+}
+
+#front_button::after{
+	content: " ";
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 20px 40px 20px;
+    border-color: transparent transparent #ffffffb0 transparent;
+    position: relative;
+    top: -4px;
+    left: 20px;
+}
+
+#back_button::after{
+	content: " ";
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 40px 20px 0 20px;
+	border-color: #ffffffb0 transparent transparent transparent;
+    position: relative;
+    top: 62px;
+    left: 20px;
+}
+
+
+@media (max-width: 720px) {
+	p.mobile_only{
+		display: block;
+	}
+	p.pc_only{
+		display: none;
+	}
+}
